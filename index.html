@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Adaptive Cricket</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #222;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin-top: 50px;
+        }
+        
+        .ui-container {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        #status {
+            color: #FFC107;
+        }
+
+        /* Wrap the canvas and history column together */
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        canvas {
+            background-color: #4CAF50; 
+            border: 4px solid #fff;
+            border-radius: 8px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Score History Sidebar */
+        .history-panel {
+            background-color: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+            padding: 15px;
+            width: 200px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+
+        .history-panel h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.2rem;
+            border-bottom: 2px solid #555;
+            padding-bottom: 10px;
+        }
+
+        #historyList {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #historyList li {
+            background-color: #444;
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .speed-warning {
+            color: #FF5252;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 10px;
+            display: none; /* Hidden by default */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-container">
+        <div>Score: <span id="score">0</span></div>
+        <div id="status">Press SPACE to swing!</div>
+    </div>
+    
+    <div class="game-layout">
+        <canvas id="gameCanvas" width="800" height="300"></canvas>
+
+        <div class="history-panel">
+            <h3>Past 10 Scores</h3>
+            <ul id="historyList">
+                <li>No games played yet</li>
+            </ul>
+            <div id="speedWarning" class="speed-warning">⚡ SPEED INCREASED!</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Game State Variables
+        let score = 0;
+        let pastScores = []; // This array is the foundation of your ML dataset!
+        let ball = { x: 0, y: 150, speed: 6, radius: 12, active: true };
+        const hitZone = { x: 650, width: 100 }; 
+        
+        // UI Elements
+        const statusEl = document.getElementById("status");
+        const historyListEl = document.getElementById("historyList");
+        const speedWarningEl = document.getElementById("speedWarning");
+
+        document.addEventListener("keydown", (event) => {
+            if (event.code === "Space") {
+                event.preventDefault(); 
+                if (ball.active) {
+                    checkHit();
+                }
+            }
+        });
+
+        function checkHit() {
+            if (ball.x >= hitZone.x && ball.x <= hitZone.x + hitZone.width) {
+                // HIT LOGIC
+                score += 1;
+                document.getElementById("score").innerText = score;
+                statusEl.innerText = "GREAT HIT!";
+                statusEl.style.color = "#00FF00"; 
+                resetBall(); 
+            } else {
+                // SWUNG TOO EARLY OR TOO LATE
+                handleGameOver("MISS! Score Reset.");
+            }
+        }
+
+        function handleGameOver(reasonMsg) {
+            // 1. Log the score to our history array
+            pastScores.unshift(score); // Adds the new score to the top of the array
+            
+            // 2. Keep only the last 10 scores
+            if (pastScores.length > 10) {
+                pastScores.pop();
+            }
+
+            // 3. Update the sidebar UI
+            updateHistoryUI();
+
+            // 4. Reset game state
+            statusEl.innerText = reasonMsg;
+            statusEl.style.color = "#FF5252";
+            score = 0;
+            document.getElementById("score").innerText = score;
+            speedWarningEl.style.display = "none"; // Hide speed warning
+            resetBall();
+        }
+
+        function updateHistoryUI() {
+            historyListEl.innerHTML = ""; // Clear current list
+            pastScores.forEach((savedScore, index) => {
+                const li = document.createElement("li");
+                li.innerText = `Game ${pastScores.length - index}: ${savedScore} runs`;
+                historyListEl.appendChild(li);
+            });
+        }
+
+        function resetBall() {
+            ball.x = 0;
+            
+            // DYNAMIC DIFFICULTY LOGIC
+            let baseSpeed = 5;
+            
+            if (score >= 10) {
+                baseSpeed = 10; // Massive jump in speed after 10 points
+                speedWarningEl.style.display = "block"; // Show UI warning
+            }
+
+            // Calculate final speed: baseSpeed + random variance
+            ball.speed = Math.random() * 3 + baseSpeed; 
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the Hit Zone
+            ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+            ctx.fillRect(hitZone.x, 0, hitZone.width, canvas.height);
+
+            // Move and Draw the Ball
+            if (ball.active) {
+                ball.x += ball.speed;
+                
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = "white";
+                ctx.fill();
+                ctx.closePath();
+
+                // If ball goes off screen without a swing
+                if (ball.x > canvas.width + ball.radius) {
+                    handleGameOver("TOO LATE! Score Reset."); 
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        gameLoop();
+    </script>
+</body>
+</html>
