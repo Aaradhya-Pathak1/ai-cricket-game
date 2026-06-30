@@ -28,7 +28,6 @@
             color: #FFC107;
         }
 
-        /* Wrap the canvas and history column together */
         .game-layout {
             display: flex;
             gap: 20px;
@@ -42,7 +41,6 @@
             box-shadow: 0 10px 20px rgba(0,0,0,0.5);
         }
 
-        /* Score History Sidebar */
         .history-panel {
             background-color: #333;
             border: 2px solid #555;
@@ -75,14 +73,6 @@
             text-align: center;
             font-weight: bold;
         }
-
-        .speed-warning {
-            color: #FF5252;
-            font-size: 0.9rem;
-            text-align: center;
-            margin-top: 10px;
-            display: none; /* Hidden by default */
-        }
     </style>
 </head>
 <body>
@@ -100,7 +90,6 @@
             <ul id="historyList">
                 <li>No games played yet</li>
             </ul>
-            <div id="speedWarning" class="speed-warning">⚡ SPEED INCREASED!</div>
         </div>
     </div>
 
@@ -110,61 +99,96 @@
 
         // Game State Variables
         let score = 0;
-        let pastScores = []; // This array is the foundation of your ML dataset!
-        let ball = { x: 0, y: 150, speed: 6, radius: 12, active: true };
-        const hitZone = { x: 650, width: 100 }; 
+        let pastScores = []; 
         
-        // UI Elements
+        const hitZone = { x: 650, width: 100 }; 
+        const hitCenter = hitZone.x + (hitZone.width / 2); // Exact middle (700)
+
+        let ball = { 
+            x: 0, 
+            y: 150, 
+            speed: 6, 
+            radius: 12, 
+            active: true,
+            isHit: false, // Tracks if the ball was successfully struck
+            vx: 0, // Hit velocity X
+            vy: 0, // Hit velocity Y
+            swingAmplitude: 0
+        };
+
+        // Bat Variables for Animation
+        let bat = {
+            x: 700,
+            y: 60,
+            width: 14,
+            height: 110,
+            angle: -Math.PI / 4,
+            isSwinging: false,
+            swingProgress: 0
+        };
+        
         const statusEl = document.getElementById("status");
         const historyListEl = document.getElementById("historyList");
-        const speedWarningEl = document.getElementById("speedWarning");
 
         document.addEventListener("keydown", (event) => {
             if (event.code === "Space") {
                 event.preventDefault(); 
-                if (ball.active) {
-                    checkHit();
+                if (ball.active && !bat.isSwinging) {
+                    bat.isSwinging = true; 
+                    bat.swingProgress = 0;
+                    
+                    // Only check for a hit if the ball hasn't already been hit
+                    if (!ball.isHit) {
+                        checkHit();
+                    }
                 }
             }
         });
 
         function checkHit() {
-            if (ball.x >= hitZone.x && ball.x <= hitZone.x + hitZone.width) {
-                // HIT LOGIC
+            const distance = Math.abs(ball.x - hitCenter);
+
+            if (distance <= 30) {
+                // SUCCESSFUL HIT
                 score += 1;
                 document.getElementById("score").innerText = score;
-                statusEl.innerText = "GREAT HIT!";
+                statusEl.innerText = "CRACK! GREAT HIT!";
                 statusEl.style.color = "#00FF00"; 
-                resetBall(); 
+                
+                // Trigger physics trajectory
+                ball.isHit = true;
+                
+                // Depending on timing, angle the hit slightly differently
+                let hitAngle = (ball.x - hitCenter) * 0.1; 
+                ball.vx = -12 - Math.random() * 5; // Shoot backwards fast
+                ball.vy = -8 + hitAngle; // Shoot upwards with slight variation
+
+            } else if (ball.x >= hitZone.x && ball.x <= hitZone.x + hitZone.width) {
+                handleGameOver("OFF CENTER! Score Reset.");
             } else {
-                // SWUNG TOO EARLY OR TOO LATE
-                handleGameOver("MISS! Score Reset.");
+                handleGameOver("SWUNG AT AIR! Score Reset.");
             }
         }
 
         function handleGameOver(reasonMsg) {
-            // 1. Log the score to our history array
-            pastScores.unshift(score); // Adds the new score to the top of the array
+            pastScores.unshift(score); 
             
-            // 2. Keep only the last 10 scores
             if (pastScores.length > 10) {
                 pastScores.pop();
             }
 
-            // 3. Update the sidebar UI
             updateHistoryUI();
 
-            // 4. Reset game state
             statusEl.innerText = reasonMsg;
             statusEl.style.color = "#FF5252";
             score = 0;
             document.getElementById("score").innerText = score;
-            speedWarningEl.style.display = "none"; // Hide speed warning
-            resetBall();
+            
+            setTimeout(() => { resetBall(); }, 400);
         }
 
         function updateHistoryUI() {
-            historyListEl.innerHTML = ""; // Clear current list
+            historyListEl.innerHTML = ""; 
             pastScores.forEach((savedScore, index) => {
                 const li = document.createElement("li");
                 li.innerText = `Game ${pastScores.length - index}: ${savedScore} runs`;
@@ -174,46 +198,85 @@
 
         function resetBall() {
             ball.x = 0;
+            ball.y = 150;
+            ball.isHit = false;
+            bat.isSwinging = false;
+            bat.angle = -Math.PI / 4; 
             
-            // DYNAMIC DIFFICULTY LOGIC
-            let baseSpeed = 5;
+            let baseSpeed = 5 + (score * 0.6); 
+            ball.speed = Math.random() * 2 + baseSpeed; 
             
-            if (score >= 10) {
-                baseSpeed = 10; // Massive jump in speed after 10 points
-                speedWarningEl.style.display = "block"; // Show UI warning
-            }
-
-            // Calculate final speed: baseSpeed + random variance
-            ball.speed = Math.random() * 3 + baseSpeed; 
+            // Sets the height of the curve (up to 150px up or down)
+            ball.swingAmplitude = (Math.random() - 0.5) * 200; 
         }
 
         function gameLoop() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw the Hit Zone
-            ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+            // Draw Hit Zone and Center Line
+            ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
             ctx.fillRect(hitZone.x, 0, hitZone.width, canvas.height);
+            ctx.fillStyle = "rgba(255, 0, 0, 0.6)";
+            ctx.fillRect(hitCenter - 2, 0, 4, canvas.height);
 
-            // Move and Draw the Ball
+            // Ball Physics & Rendering
             if (ball.active) {
-                ball.x += ball.speed;
                 
+                if (!ball.isHit) {
+                    // INCOMING PITCH PHYSICS
+                    ball.x += ball.speed;
+                    // The math below guarantees the ball arcs but always lands perfectly at y=150 when x reaches hitCenter
+                    ball.y = 150 + Math.sin((ball.x / hitCenter) * Math.PI) * ball.swingAmplitude;
+                    
+                    // Missed without swinging
+                    if (ball.x > canvas.width + ball.radius && !bat.isSwinging) {
+                        handleGameOver("TOO LATE! Score Reset."); 
+                    }
+                } else {
+                    // HIT BALL PHYSICS (Trajectory off the bat)
+                    ball.x += ball.vx;
+                    ball.y += ball.vy;
+                    ball.vy += 0.4; // Gravity pulls the ball down
+
+                    // Reset the ball once it flies off the screen
+                    if (ball.x < -50 || ball.y > canvas.height + 50) {
+                        resetBall();
+                    }
+                }
+
                 ctx.beginPath();
                 ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
                 ctx.fillStyle = "white";
                 ctx.fill();
                 ctx.closePath();
+            }
 
-                // If ball goes off screen without a swing
-                if (ball.x > canvas.width + ball.radius) {
-                    handleGameOver("TOO LATE! Score Reset."); 
+            // Bat Animation & Rendering
+            if (bat.isSwinging) {
+                bat.swingProgress += 0.15; 
+                bat.angle = -Math.PI / 4 + (bat.swingProgress * Math.PI / 1.5);
+
+                if (bat.swingProgress >= 1) {
+                    bat.isSwinging = false; 
                 }
             }
+
+            ctx.save();
+            ctx.translate(bat.x, bat.y); 
+            ctx.rotate(bat.angle); 
+            
+            ctx.fillStyle = "#D2B48C"; 
+            ctx.fillRect(-bat.width / 2, 0, bat.width, bat.height);
+            ctx.fillStyle = "#222";
+            ctx.fillRect(-bat.width / 2, 0, bat.width, 35);
+            
+            ctx.restore();
 
             requestAnimationFrame(gameLoop);
         }
 
-        // Start game
+        // Initialize and start
+        resetBall();
         gameLoop();
     </script>
 </body>
